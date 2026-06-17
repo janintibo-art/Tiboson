@@ -84,7 +84,6 @@ jobs:
               '}\n'
               'dependencies { implementation "androidx.webkit:webkit:1.9.0" }\n')
 
-          # CORRECTION : gradle.properties avec AndroidX activÃ©
           open('android/gradle.properties','w').write(
               'org.gradle.jvmargs=-Xmx2048m\n'
               'android.useAndroidX=true\n'
@@ -110,11 +109,16 @@ jobs:
               '    </application>\n'
               '</manifest>\n')
 
+          # CORRECTION SCROLL : zoom + scroll activÃ©s
           open('android/app/src/main/java/com/studiotibo/app/MainActivity.java','w').write(
               'package com.studiotibo.app;\n'
-              'import android.app.Activity;\nimport android.os.Bundle;\n'
-              'import android.webkit.WebSettings;\nimport android.webkit.WebView;\n'
-              'import android.webkit.WebViewClient;\nimport android.webkit.WebChromeClient;\n'
+              'import android.app.Activity;\n'
+              'import android.os.Bundle;\n'
+              'import android.view.View;\n'
+              'import android.webkit.WebSettings;\n'
+              'import android.webkit.WebView;\n'
+              'import android.webkit.WebViewClient;\n'
+              'import android.webkit.WebChromeClient;\n'
               'public class MainActivity extends Activity {\n'
               '    @Override protected void onCreate(Bundle s) {\n'
               '        super.onCreate(s);\n'
@@ -124,8 +128,19 @@ jobs:
               '        ws.setJavaScriptEnabled(true);\n'
               '        ws.setDomStorageEnabled(true);\n'
               '        ws.setMediaPlaybackRequiresUserGesture(false);\n'
-              '        ws.setUseWideViewPort(false);\n'
-              '        ws.setLoadWithOverviewMode(false);\n'
+              '        // Scroll et zoom : l\'app DAW est conÃ§ue pour 1024px+\n'
+              '        // useWideViewPort = respecte la balise viewport du HTML\n'
+              '        ws.setUseWideViewPort(true);\n'
+              '        // Zoom initial pour voir tout le contenu\n'
+              '        ws.setLoadWithOverviewMode(true);\n'
+              '        // Autoriser le pinch-to-zoom\n'
+              '        ws.setSupportZoom(true);\n'
+              '        ws.setBuiltInZoomControls(true);\n'
+              '        ws.setDisplayZoomControls(false);\n'
+              '        // Scroll horizontal et vertical\n'
+              '        wv.setScrollBarStyle(View.SCROLLBARS_INSIDE_OVERLAY);\n'
+              '        wv.setHorizontalScrollBarEnabled(true);\n'
+              '        wv.setVerticalScrollBarEnabled(true);\n'
               '        wv.setWebViewClient(new WebViewClient());\n'
               '        wv.setWebChromeClient(new WebChromeClient());\n'
               '        wv.loadUrl("file:///android_asset/index.html");\n'
