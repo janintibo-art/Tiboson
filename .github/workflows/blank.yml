@@ -18,31 +18,36 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: CrÃ©er le projet Android et copier le HTML
+      - name: Trouver ou extraire le HTML
+        run: |
+          HTML=$(find . -not -path './.git/*' -not -path './node_modules/*' \
+                        -not -path './android/*' \
+                        -name "*.html" 2>/dev/null | head -1)
+
+          if [ -z "$HTML" ]; then
+            ZIP=$(find . -not -path './.git/*' -name "*.zip" 2>/dev/null | head -1)
+            if [ -n "$ZIP" ]; then
+              mkdir -p _zip_tmp
+              unzip -q "$ZIP" -d _zip_tmp
+              HTML=$(find _zip_tmp -name "*.html" | head -1)
+            fi
+          fi
+
+          if [ -z "$HTML" ]; then
+            echo "ERREUR : aucun fichier HTML dans le repo"
+            exit 1
+          fi
+
+          echo "HTML : $HTML  ($(du -h "$HTML" | cut -f1))"
+          echo "HTML_PATH=$HTML" >> $GITHUB_ENV
+
+      - name: CrÃ©er le projet Android
         run: |
           python3 - << 'PYEOF'
           import os, shutil
 
-          # Trouver le HTML compilÃ©
-          candidates = []
-          for root, dirs, files in os.walk('.'):
-              dirs[:] = [d for d in dirs if d not in ['node_modules', '.git', 'android']]
-              for f in files:
-                  if f.endswith('.html'):
-                      candidates.append(os.path.join(root, f))
-          print("HTML trouvÃ©s :", candidates)
+          html = os.environ['HTML_PATH']
 
-          html = None
-          for c in candidates:
-              if '/dist/' in c or '/desktop/src/' in c:
-                  html = c; break
-          if not html and candidates:
-              html = candidates[0]
-          if not html:
-              raise FileNotFoundError("Aucun fichier HTML trouvÃ© dans le repo !")
-          print(f"Utilisation : {html}  ({os.path.getsize(html)//1024} Ko)")
-
-          # CrÃ©er les dossiers
           for p in [
               'android/app/src/main/assets',
               'android/app/src/main/java/com/studiotibo/app',
@@ -52,9 +57,8 @@ jobs:
               os.makedirs(p, exist_ok=True)
 
           shutil.copy(html, 'android/app/src/main/assets/index.html')
-          print("HTML copiÃ© dans les assets")
+          print(f"HTML copie : {os.path.getsize('android/app/src/main/assets/index.html')//1024} Ko")
 
-          # Ã‰crire tous les fichiers du projet Android
           open('android/settings.gradle','w').write(
               'rootProject.name = "StudioTibo"\ninclude ":app"\n')
 
@@ -62,8 +66,7 @@ jobs:
               'buildscript {\n'
               '    repositories { google(); mavenCentral() }\n'
               '    dependencies { classpath "com.android.tools.build:gradle:8.2.2" }\n'
-              '}\n'
-              'allprojects { repositories { google(); mavenCentral() } }\n')
+              '}\nallprojects { repositories { google(); mavenCentral() } }\n')
 
           open('android/app/build.gradle','w').write(
               'plugins { id "com.android.application" }\n'
@@ -81,17 +84,21 @@ jobs:
               '}\n'
               'dependencies { implementation "androidx.webkit:webkit:1.9.0" }\n')
 
+          # CORRECTION : gradle.properties avec AndroidX activÃ©
+          open('android/gradle.properties','w').write(
+              'org.gradle.jvmargs=-Xmx2048m\n'
+              'android.useAndroidX=true\n'
+              'android.enableJetifier=true\n')
+
           open('android/app/src/main/AndroidManifest.xml','w').write(
               '<?xml version="1.0" encoding="utf-8"?>\n'
               '<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n'
               '    <uses-permission android:name="android.permission.RECORD_AUDIO"/>\n'
               '    <uses-permission android:name="android.permission.INTERNET"/>\n'
-              '    <application\n'
-              '        android:label="Studio Tibo"\n'
+              '    <application android:label="Studio Tibo"\n'
               '        android:theme="@style/AppTheme"\n'
               '        android:hardwareAccelerated="true">\n'
-              '        <activity\n'
-              '            android:name=".MainActivity"\n'
+              '        <activity android:name=".MainActivity"\n'
               '            android:exported="true"\n'
               '            android:screenOrientation="landscape"\n'
               '            android:configChanges="orientation|screenSize|keyboardHidden">\n'
@@ -105,29 +112,24 @@ jobs:
 
           open('android/app/src/main/java/com/studiotibo/app/MainActivity.java','w').write(
               'package com.studiotibo.app;\n'
-              'import android.app.Activity;\n'
-              'import android.os.Bundle;\n'
-              'import android.webkit.WebSettings;\n'
-              'import android.webkit.WebView;\n'
-              'import android.webkit.WebViewClient;\n'
-              'import android.webkit.WebChromeClient;\n'
+              'import android.app.Activity;\nimport android.os.Bundle;\n'
+              'import android.webkit.WebSettings;\nimport android.webkit.WebView;\n'
+              'import android.webkit.WebViewClient;\nimport android.webkit.WebChromeClient;\n'
               'public class MainActivity extends Activity {\n'
-              '    @Override\n'
-              '    protected void onCreate(Bundle savedInstanceState) {\n'
-              '        super.onCreate(savedInstanceState);\n'
+              '    @Override protected void onCreate(Bundle s) {\n'
+              '        super.onCreate(s);\n'
               '        WebView wv = new WebView(this);\n'
               '        setContentView(wv);\n'
-              '        WebSettings s = wv.getSettings();\n'
-              '        s.setJavaScriptEnabled(true);\n'
-              '        s.setDomStorageEnabled(true);\n'
-              '        s.setMediaPlaybackRequiresUserGesture(false);\n'
-              '        s.setUseWideViewPort(false);\n'
-              '        s.setLoadWithOverviewMode(false);\n'
+              '        WebSettings ws = wv.getSettings();\n'
+              '        ws.setJavaScriptEnabled(true);\n'
+              '        ws.setDomStorageEnabled(true);\n'
+              '        ws.setMediaPlaybackRequiresUserGesture(false);\n'
+              '        ws.setUseWideViewPort(false);\n'
+              '        ws.setLoadWithOverviewMode(false);\n'
               '        wv.setWebViewClient(new WebViewClient());\n'
               '        wv.setWebChromeClient(new WebChromeClient());\n'
               '        wv.loadUrl("file:///android_asset/index.html");\n'
-              '    }\n'
-              '}\n')
+              '    }\n}\n')
 
           open('android/app/src/main/res/values/styles.xml','w').write(
               '<?xml version="1.0" encoding="utf-8"?>\n'
@@ -136,11 +138,9 @@ jobs:
               '</resources>\n')
 
           open('android/gradle/wrapper/gradle-wrapper.properties','w').write(
-              'distributionBase=GRADLE_USER_HOME\n'
-              'distributionPath=wrapper/dists\n'
+              'distributionBase=GRADLE_USER_HOME\ndistributionPath=wrapper/dists\n'
               'distributionUrl=https\\://services.gradle.org/distributions/gradle-8.7-bin.zip\n'
-              'zipStoreBase=GRADLE_USER_HOME\n'
-              'zipStorePath=wrapper/dists\n')
+              'zipStoreBase=GRADLE_USER_HOME\nzipStorePath=wrapper/dists\n')
 
           print("Projet Android pret !")
           PYEOF
@@ -158,9 +158,8 @@ jobs:
         run: |
           mkdir -p out
           APK=$(find android/app/build/outputs/apk -name "*.apk" | head -1)
-          echo "APK : $APK"
+          echo "APK genere : $APK  ($(du -h "$APK" | cut -f1))"
           cp "$APK" out/studio-tibo.apk
-          ls -lh out/studio-tibo.apk
 
       - name: Publier l'APK (onglet Actions > Artifacts)
         uses: actions/upload-artifact@v4
@@ -169,12 +168,10 @@ jobs:
           path: out/studio-tibo.apk
           retention-days: 30
 
-      - name: Release automatique (si tag vX.Y.Z)
+      - name: Release (si tag vX.Y.Z)
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: out/studio-tibo.apk
           name: STUDIO TIBO ${{ github.ref_name }}
-          body: |
-            TÃ©lÃ©chargez studio-tibo.apk sur votre tÃ©lÃ©phone Android.
-            (Autorisez les sources inconnues Ã  la premiÃ¨re installation.)
+          body: TÃ©lÃ©chargez studio-tibo.apk sur votre tÃ©lÃ©phone Android.
