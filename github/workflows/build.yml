@@ -18,34 +18,45 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Trouver le HTML (zip ou fichier direct)
+      - name: Trouver ou extraire le HTML
         run: |
-          echo "=== Contenu du repo ==="
-          find . -not -path './.git/*' -not -path './node_modules/*' | head -50
+          echo "=== Fichiers dans le repo ==="
+          find . -not -path './.git/*' -not -path './node_modules/*' \
+                 -not -path './android/*' | sort
 
-          echo "=== Recherche HTML ==="
-          HTML=""
-
-          # 1. Chercher directement un .html
+          echo ""
+          echo "=== Recherche HTML direct ==="
           HTML=$(find . -not -path './.git/*' -not -path './node_modules/*' \
-                 -name "*.html" | head -1)
+                        -not -path './android/*' \
+                        \( -name "*.html" -o -name "index.html" \) 2>/dev/null | head -1)
 
-          # 2. Si pas trouvÃ©, chercher un .zip et extraire le HTML dedans
-          if [ -z "$HTML" ]; then
-            echo "Pas de HTML direct â€” recherche d'un zip..."
-            ZIP=$(find . -not -path './.git/*' -name "*.zip" | head -1)
+          if [ -n "$HTML" ]; then
+            echo "HTML trouvÃ© directement : $HTML"
+          else
+            echo "Pas de HTML direct - recherche d'un zip..."
+            ZIP=$(find . -not -path './.git/*' -name "*.zip" 2>/dev/null | head -1)
             if [ -n "$ZIP" ]; then
-              echo "Zip trouvÃ© : $ZIP"
-              mkdir -p _zip_extract
-              unzip -q "$ZIP" "*.html" -d _zip_extract 2>/dev/null || \
-              unzip -q "$ZIP" -d _zip_extract
-              HTML=$(find _zip_extract -name "*.html" | head -1)
+              echo "Zip trouvÃ© : $ZIP - extraction..."
+              mkdir -p _zip_tmp
+              unzip -q "$ZIP" -d _zip_tmp
+              echo "Contenu du zip :"
+              find _zip_tmp -type f | head -30
+              HTML=$(find _zip_tmp \( -name "*.html" -o -name "index.html" \) | \
+                     grep -E "(dist|desktop)" | head -1)
+              if [ -z "$HTML" ]; then
+                HTML=$(find _zip_tmp -name "*.html" | head -1)
+              fi
             fi
           fi
 
           if [ -z "$HTML" ]; then
-            echo "ERREUR : aucun HTML trouvÃ©."
-            echo "Ajoute studio-tibo-v3.8.3.html Ã  la racine de ton repo GitHub."
+            echo ""
+            echo "============================================"
+            echo "ERREUR : Aucun fichier HTML trouvÃ© !"
+            echo ""
+            echo "Solution : ajouter le fichier HTML dans"
+            echo "ton repo GitHub (Upload files sur GitHub)"
+            echo "============================================"
             exit 1
           fi
 
@@ -68,7 +79,8 @@ jobs:
               os.makedirs(p, exist_ok=True)
 
           shutil.copy(html, 'android/app/src/main/assets/index.html')
-          print(f"HTML copie : {os.path.getsize('android/app/src/main/assets/index.html')//1024} Ko")
+          size = os.path.getsize('android/app/src/main/assets/index.html')
+          print(f"HTML copie : {size//1024} Ko")
 
           open('android/settings.gradle','w').write(
               'rootProject.name = "StudioTibo"\ninclude ":app"\n')
@@ -163,11 +175,10 @@ jobs:
         run: |
           mkdir -p out
           APK=$(find android/app/build/outputs/apk -name "*.apk" | head -1)
-          echo "APK genere : $APK"
+          echo "APK genere : $APK  ($(du -h "$APK" | cut -f1))"
           cp "$APK" out/studio-tibo.apk
-          ls -lh out/studio-tibo.apk
 
-      - name: Publier l'APK (onglet Actions > Artifacts)
+      - name: Publier l'APK
         uses: actions/upload-artifact@v4
         with:
           name: studio-tibo-apk
