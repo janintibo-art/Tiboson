@@ -23,7 +23,6 @@ jobs:
           HTML=$(find . -not -path './.git/*' -not -path './node_modules/*' \
                         -not -path './android/*' \
                         -name "*.html" 2>/dev/null | head -1)
-
           if [ -z "$HTML" ]; then
             ZIP=$(find . -not -path './.git/*' -name "*.zip" 2>/dev/null | head -1)
             if [ -n "$ZIP" ]; then
@@ -32,22 +31,113 @@ jobs:
               HTML=$(find _zip_tmp -name "*.html" | head -1)
             fi
           fi
-
           if [ -z "$HTML" ]; then
-            echo "ERREUR : aucun fichier HTML dans le repo"
+            echo "ERREUR : aucun fichier HTML"
             exit 1
           fi
-
-          echo "HTML : $HTML  ($(du -h "$HTML" | cut -f1))"
+          echo "HTML : $HTML"
           echo "HTML_PATH=$HTML" >> $GITHUB_ENV
 
-      - name: CrÃ©er le projet Android
+      - name: Injecter le CSS mobile et crÃ©er le projet Android
         run: |
           python3 - << 'PYEOF'
-          import os, shutil
+          import os, shutil, re
 
-          html = os.environ['HTML_PATH']
+          html_src = os.environ['HTML_PATH']
 
+          # â”€â”€ Lire le HTML â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+          with open(html_src, 'r', encoding='utf-8', errors='replace') as f:
+              html = f.read()
+
+          # â”€â”€ CSS injectÃ© pour tÃ©lÃ©phone Android â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+          mobile_css = """
+          <style id="android-mobile-fix">
+          /* ===== Optimisation Android phone ===== */
+
+          /* Menubar plus compacte */
+          .menubar {
+              min-height: 36px !important;
+              height: 36px !important;
+              font-size: 12px !important;
+              padding: 0 4px !important;
+          }
+          .menubar .logo img { height: 22px !important; }
+          .menubar .logo .wm { font-size: 11px !important; }
+          .menubar .logo .ver { font-size: 10px !important; }
+          .menubar .menu > button { padding: 4px 8px !important; font-size: 11px !important; }
+
+          /* Transport plus compact */
+          .transport {
+              min-height: 44px !important;
+              height: 44px !important;
+              padding: 2px 6px !important;
+              gap: 4px !important;
+          }
+          .transport .tbtn {
+              width: 34px !important;
+              height: 34px !important;
+              font-size: 14px !important;
+              padding: 0 !important;
+          }
+          .transport .tempo, .transport .bpm {
+              font-size: 18px !important;
+          }
+          #status {
+              font-size: 10px !important;
+              padding: 2px 6px !important;
+              min-height: 18px !important;
+              line-height: 18px !important;
+          }
+
+          /* Onglets plus compacts */
+          .tabs {
+              min-height: 32px !important;
+              height: 32px !important;
+              overflow-x: auto !important;
+              -webkit-overflow-scrolling: touch !important;
+          }
+          .tab, .tabs button {
+              padding: 4px 10px !important;
+              font-size: 11px !important;
+              white-space: nowrap !important;
+          }
+
+          /* Barre patterns plus compacte */
+          .patternbar {
+              min-height: 30px !important;
+              height: 30px !important;
+              padding: 2px 6px !important;
+              overflow-x: auto !important;
+              -webkit-overflow-scrolling: touch !important;
+          }
+          .patternbar button, .pchip {
+              font-size: 11px !important;
+              padding: 3px 8px !important;
+              height: 26px !important;
+          }
+
+          /* Zone de vue : prend tout l'espace restant */
+          .view {
+              overflow: auto !important;
+              -webkit-overflow-scrolling: touch !important;
+          }
+
+          /* Barre de statut bas */
+          .statusbar, #statBar, .stat-bar {
+              font-size: 10px !important;
+              padding: 2px 6px !important;
+              min-height: 18px !important;
+          }
+          </style>
+          """
+
+          # Injecter avant </head>
+          if '</head>' in html:
+              html = html.replace('</head>', mobile_css + '\n</head>', 1)
+          else:
+              html = mobile_css + html
+
+          # â”€â”€ CrÃ©er les dossiers Android â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
           for p in [
               'android/app/src/main/assets',
               'android/app/src/main/java/com/studiotibo/app',
@@ -56,9 +146,14 @@ jobs:
           ]:
               os.makedirs(p, exist_ok=True)
 
-          shutil.copy(html, 'android/app/src/main/assets/index.html')
-          print(f"HTML copie : {os.path.getsize('android/app/src/main/assets/index.html')//1024} Ko")
+          # â”€â”€ Ã‰crire le HTML modifiÃ© â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+          with open('android/app/src/main/assets/index.html', 'w',
+                    encoding='utf-8') as f:
+              f.write(html)
+          size = os.path.getsize('android/app/src/main/assets/index.html')
+          print(f"HTML copie avec CSS mobile : {size//1024} Ko")
 
+          # â”€â”€ Fichiers Gradle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
           open('android/settings.gradle','w').write(
               'rootProject.name = "StudioTibo"\ninclude ":app"\n')
 
@@ -77,7 +172,7 @@ jobs:
               '        applicationId "com.studiotibo.app"\n'
               '        minSdk 26\n'
               '        targetSdk 34\n'
-              '        versionCode 1\n'
+              '        versionCode 2\n'
               '        versionName "3.8.3"\n'
               '    }\n'
               '    buildTypes { debug { minifyEnabled false } }\n'
@@ -109,16 +204,12 @@ jobs:
               '    </application>\n'
               '</manifest>\n')
 
-          # CORRECTION SCROLL : zoom + scroll activÃ©s
           open('android/app/src/main/java/com/studiotibo/app/MainActivity.java','w').write(
               'package com.studiotibo.app;\n'
-              'import android.app.Activity;\n'
-              'import android.os.Bundle;\n'
+              'import android.app.Activity;\nimport android.os.Bundle;\n'
               'import android.view.View;\n'
-              'import android.webkit.WebSettings;\n'
-              'import android.webkit.WebView;\n'
-              'import android.webkit.WebViewClient;\n'
-              'import android.webkit.WebChromeClient;\n'
+              'import android.webkit.WebSettings;\nimport android.webkit.WebView;\n'
+              'import android.webkit.WebViewClient;\nimport android.webkit.WebChromeClient;\n'
               'public class MainActivity extends Activity {\n'
               '    @Override protected void onCreate(Bundle s) {\n'
               '        super.onCreate(s);\n'
@@ -128,16 +219,11 @@ jobs:
               '        ws.setJavaScriptEnabled(true);\n'
               '        ws.setDomStorageEnabled(true);\n'
               '        ws.setMediaPlaybackRequiresUserGesture(false);\n'
-              '        // Scroll et zoom : l\'app DAW est conÃ§ue pour 1024px+\n'
-              '        // useWideViewPort = respecte la balise viewport du HTML\n'
               '        ws.setUseWideViewPort(true);\n'
-              '        // Zoom initial pour voir tout le contenu\n'
               '        ws.setLoadWithOverviewMode(true);\n'
-              '        // Autoriser le pinch-to-zoom\n'
               '        ws.setSupportZoom(true);\n'
               '        ws.setBuiltInZoomControls(true);\n'
               '        ws.setDisplayZoomControls(false);\n'
-              '        // Scroll horizontal et vertical\n'
               '        wv.setScrollBarStyle(View.SCROLLBARS_INSIDE_OVERLAY);\n'
               '        wv.setHorizontalScrollBarEnabled(true);\n'
               '        wv.setVerticalScrollBarEnabled(true);\n'
@@ -173,10 +259,10 @@ jobs:
         run: |
           mkdir -p out
           APK=$(find android/app/build/outputs/apk -name "*.apk" | head -1)
-          echo "APK genere : $APK  ($(du -h "$APK" | cut -f1))"
+          echo "APK : $APK  ($(du -h "$APK" | cut -f1))"
           cp "$APK" out/studio-tibo.apk
 
-      - name: Publier l'APK (onglet Actions > Artifacts)
+      - name: Publier l'APK
         uses: actions/upload-artifact@v4
         with:
           name: studio-tibo-apk
