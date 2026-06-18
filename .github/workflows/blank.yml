@@ -21,123 +21,130 @@ jobs:
       - name: Trouver ou extraire le HTML
         run: |
           HTML=$(find . -not -path './.git/*' -not -path './node_modules/*' \
-                        -not -path './android/*' \
-                        -name "*.html" 2>/dev/null | head -1)
+                        -not -path './android/*' -name "*.html" 2>/dev/null | head -1)
           if [ -z "$HTML" ]; then
             ZIP=$(find . -not -path './.git/*' -name "*.zip" 2>/dev/null | head -1)
             if [ -n "$ZIP" ]; then
-              mkdir -p _zip_tmp
-              unzip -q "$ZIP" -d _zip_tmp
+              mkdir -p _zip_tmp && unzip -q "$ZIP" -d _zip_tmp
               HTML=$(find _zip_tmp -name "*.html" | head -1)
             fi
           fi
-          if [ -z "$HTML" ]; then
-            echo "ERREUR : aucun fichier HTML"
-            exit 1
-          fi
-          echo "HTML : $HTML"
-          echo "HTML_PATH=$HTML" >> $GITHUB_ENV
+          if [ -z "$HTML" ]; then echo "ERREUR : aucun HTML" && exit 1; fi
+          echo "HTML : $HTML" && echo "HTML_PATH=$HTML" >> $GITHUB_ENV
 
-      - name: Injecter le CSS mobile et crÃ©er le projet Android
+      - name: Injecter CSS+JS mobile et crÃ©er le projet Android
         run: |
           python3 - << 'PYEOF'
           import os, shutil, re
 
           html_src = os.environ['HTML_PATH']
-
-          # â”€â”€ Lire le HTML â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
           with open(html_src, 'r', encoding='utf-8', errors='replace') as f:
               html = f.read()
 
-          # â”€â”€ CSS injectÃ© pour tÃ©lÃ©phone Android â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-          mobile_css = """
-          <style id="android-mobile-fix">
-          /* ===== Optimisation Android phone ===== */
+          # â”€â”€ 1. Corriger la balise viewport â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+          html = re.sub(
+              r'<meta[^>]*name=["\']viewport["\'][^>]*>',
+              '<meta name="viewport" content="width=1024, initial-scale=0.5, '
+              'minimum-scale=0.2, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover">',
+              html)
 
-          /* Menubar plus compacte */
-          .menubar {
-              min-height: 36px !important;
-              height: 36px !important;
-              font-size: 12px !important;
-              padding: 0 4px !important;
-          }
-          .menubar .logo img { height: 22px !important; }
-          .menubar .logo .wm { font-size: 11px !important; }
-          .menubar .logo .ver { font-size: 10px !important; }
-          .menubar .menu > button { padding: 4px 8px !important; font-size: 11px !important; }
+          # â”€â”€ 2. CSS compact + fix menus â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+          mobile_css = """<style id="android-fix">
+          /* Barres compactes */
+          .menubar{min-height:34px!important;height:34px!important;font-size:12px!important;padding:0 4px!important;}
+          .menubar .logo img{height:20px!important;}
+          .menubar .logo .wm{font-size:11px!important;}
+          .menubar .logo .ver{font-size:10px!important;}
+          .menubar .menu>button{padding:4px 8px!important;font-size:11px!important;}
+          .transport{min-height:42px!important;height:42px!important;padding:2px 6px!important;gap:3px!important;}
+          .transport .tbtn,.tbtn{width:32px!important;height:32px!important;font-size:13px!important;padding:0!important;}
+          .transport .tempo,.bpm{font-size:17px!important;}
+          #status{font-size:10px!important;padding:1px 6px!important;min-height:16px!important;line-height:16px!important;}
+          .tabs{min-height:30px!important;height:30px!important;overflow-x:auto!important;-webkit-overflow-scrolling:touch!important;}
+          .tab,.tabs button{padding:3px 10px!important;font-size:11px!important;white-space:nowrap!important;}
+          .patternbar{min-height:28px!important;height:28px!important;padding:1px 6px!important;overflow-x:auto!important;-webkit-overflow-scrolling:touch!important;}
+          .patternbar button,.pchip{font-size:11px!important;padding:2px 7px!important;height:24px!important;}
+          .view{overflow:auto!important;-webkit-overflow-scrolling:touch!important;}
+          .statusbar,#statBar,.stat-bar{font-size:10px!important;padding:1px 6px!important;min-height:16px!important;}
 
-          /* Transport plus compact */
-          .transport {
-              min-height: 44px !important;
-              height: 44px !important;
-              padding: 2px 6px !important;
-              gap: 4px !important;
+          /* Fix menus dÃ©roulants Android */
+          .menu{position:relative;}
+          .menu .dropdown{
+              position:fixed!important;
+              top:34px!important;
+              z-index:99999!important;
+              min-width:180px!important;
+              max-height:80vh!important;
+              overflow-y:auto!important;
+              -webkit-overflow-scrolling:touch!important;
           }
-          .transport .tbtn {
-              width: 34px !important;
-              height: 34px !important;
-              font-size: 14px !important;
-              padding: 0 !important;
+          .menu .dropdown button,.menu .dropdown a{
+              min-height:40px!important;
+              padding:8px 16px!important;
+              font-size:13px!important;
+              display:flex!important;
+              align-items:center!important;
+              width:100%!important;
+              text-align:left!important;
           }
-          .transport .tempo, .transport .bpm {
-              font-size: 18px !important;
-          }
-          #status {
-              font-size: 10px !important;
-              padding: 2px 6px !important;
-              min-height: 18px !important;
-              line-height: 18px !important;
-          }
+          </style>"""
 
-          /* Onglets plus compacts */
-          .tabs {
-              min-height: 32px !important;
-              height: 32px !important;
-              overflow-x: auto !important;
-              -webkit-overflow-scrolling: touch !important;
-          }
-          .tab, .tabs button {
-              padding: 4px 10px !important;
-              font-size: 11px !important;
-              white-space: nowrap !important;
-          }
+          # â”€â”€ 3. JS fix touch pour menus â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+          mobile_js = """<script id="android-menu-fix">
+          (function(){
+            function fixMenus(){
+              /* RÃ©-ouvrir les menus avec touchend au lieu de click */
+              document.querySelectorAll('.menu').forEach(function(m){
+                var btn = m.querySelector(':scope>button');
+                if(!btn) return;
+                btn.addEventListener('touchend', function(e){
+                  e.preventDefault();
+                  e.stopPropagation();
+                  var wasOpen = m.classList.contains('open');
+                  document.querySelectorAll('.menu.open')
+                          .forEach(function(x){x.classList.remove('open');});
+                  if(!wasOpen) m.classList.add('open');
+                }, {passive:false});
+              });
+              /* Fermer en touchant ailleurs */
+              document.addEventListener('touchend', function(e){
+                if(!e.target.closest('.menu')){
+                  document.querySelectorAll('.menu.open')
+                          .forEach(function(x){x.classList.remove('open');});
+                }
+              }, {passive:true});
+              /* Items du dropdown : touch â†’ click */
+              document.querySelectorAll('.menu .dropdown button, .menu .dropdown a')
+                .forEach(function(item){
+                  item.addEventListener('touchend', function(e){
+                    e.preventDefault();
+                    e.stopPropagation();
+                    document.querySelectorAll('.menu.open')
+                            .forEach(function(x){x.classList.remove('open');});
+                    this.click();
+                  }, {passive:false});
+                });
+            }
+            if(document.readyState==='loading'){
+              document.addEventListener('DOMContentLoaded', fixMenus);
+            } else {
+              fixMenus();
+            }
+          })();
+          </script>"""
 
-          /* Barre patterns plus compacte */
-          .patternbar {
-              min-height: 30px !important;
-              height: 30px !important;
-              padding: 2px 6px !important;
-              overflow-x: auto !important;
-              -webkit-overflow-scrolling: touch !important;
-          }
-          .patternbar button, .pchip {
-              font-size: 11px !important;
-              padding: 3px 8px !important;
-              height: 26px !important;
-          }
-
-          /* Zone de vue : prend tout l'espace restant */
-          .view {
-              overflow: auto !important;
-              -webkit-overflow-scrolling: touch !important;
-          }
-
-          /* Barre de statut bas */
-          .statusbar, #statBar, .stat-bar {
-              font-size: 10px !important;
-              padding: 2px 6px !important;
-              min-height: 18px !important;
-          }
-          </style>
-          """
-
-          # Injecter avant </head>
+          # Injecter CSS avant </head> et JS avant </body>
           if '</head>' in html:
               html = html.replace('</head>', mobile_css + '\n</head>', 1)
           else:
               html = mobile_css + html
 
-          # â”€â”€ CrÃ©er les dossiers Android â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+          if '</body>' in html:
+              html = html.replace('</body>', mobile_js + '\n</body>', 1)
+          else:
+              html += mobile_js
+
+          # â”€â”€ 4. CrÃ©er l'arborescence Android â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
           for p in [
               'android/app/src/main/assets',
               'android/app/src/main/java/com/studiotibo/app',
@@ -146,23 +153,17 @@ jobs:
           ]:
               os.makedirs(p, exist_ok=True)
 
-          # â”€â”€ Ã‰crire le HTML modifiÃ© â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-          with open('android/app/src/main/assets/index.html', 'w',
-                    encoding='utf-8') as f:
+          with open('android/app/src/main/assets/index.html','w',encoding='utf-8') as f:
               f.write(html)
-          size = os.path.getsize('android/app/src/main/assets/index.html')
-          print(f"HTML copie avec CSS mobile : {size//1024} Ko")
+          print(f"HTML injecte : {os.path.getsize('android/app/src/main/assets/index.html')//1024} Ko")
 
-          # â”€â”€ Fichiers Gradle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
           open('android/settings.gradle','w').write(
               'rootProject.name = "StudioTibo"\ninclude ":app"\n')
-
           open('android/build.gradle','w').write(
               'buildscript {\n'
               '    repositories { google(); mavenCentral() }\n'
               '    dependencies { classpath "com.android.tools.build:gradle:8.2.2" }\n'
               '}\nallprojects { repositories { google(); mavenCentral() } }\n')
-
           open('android/app/build.gradle','w').write(
               'plugins { id "com.android.application" }\n'
               'android {\n'
@@ -172,18 +173,16 @@ jobs:
               '        applicationId "com.studiotibo.app"\n'
               '        minSdk 26\n'
               '        targetSdk 34\n'
-              '        versionCode 2\n'
+              '        versionCode 3\n'
               '        versionName "3.8.3"\n'
               '    }\n'
               '    buildTypes { debug { minifyEnabled false } }\n'
               '}\n'
               'dependencies { implementation "androidx.webkit:webkit:1.9.0" }\n')
-
           open('android/gradle.properties','w').write(
               'org.gradle.jvmargs=-Xmx2048m\n'
               'android.useAndroidX=true\n'
               'android.enableJetifier=true\n')
-
           open('android/app/src/main/AndroidManifest.xml','w').write(
               '<?xml version="1.0" encoding="utf-8"?>\n'
               '<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n'
@@ -194,7 +193,7 @@ jobs:
               '        android:hardwareAccelerated="true">\n'
               '        <activity android:name=".MainActivity"\n'
               '            android:exported="true"\n'
-              '            android:screenOrientation="landscape"\n'
+              '            android:screenOrientation="user"\n'
               '            android:configChanges="orientation|screenSize|keyboardHidden">\n'
               '            <intent-filter>\n'
               '                <action android:name="android.intent.action.MAIN"/>\n'
@@ -203,7 +202,6 @@ jobs:
               '        </activity>\n'
               '    </application>\n'
               '</manifest>\n')
-
           open('android/app/src/main/java/com/studiotibo/app/MainActivity.java','w').write(
               'package com.studiotibo.app;\n'
               'import android.app.Activity;\nimport android.os.Bundle;\n'
@@ -231,18 +229,15 @@ jobs:
               '        wv.setWebChromeClient(new WebChromeClient());\n'
               '        wv.loadUrl("file:///android_asset/index.html");\n'
               '    }\n}\n')
-
           open('android/app/src/main/res/values/styles.xml','w').write(
               '<?xml version="1.0" encoding="utf-8"?>\n'
               '<resources>\n'
               '    <style name="AppTheme" parent="android:Theme.NoTitleBar.Fullscreen"/>\n'
               '</resources>\n')
-
           open('android/gradle/wrapper/gradle-wrapper.properties','w').write(
               'distributionBase=GRADLE_USER_HOME\ndistributionPath=wrapper/dists\n'
               'distributionUrl=https\\://services.gradle.org/distributions/gradle-8.7-bin.zip\n'
               'zipStoreBase=GRADLE_USER_HOME\nzipStorePath=wrapper/dists\n')
-
           print("Projet Android pret !")
           PYEOF
 
@@ -259,7 +254,7 @@ jobs:
         run: |
           mkdir -p out
           APK=$(find android/app/build/outputs/apk -name "*.apk" | head -1)
-          echo "APK : $APK  ($(du -h "$APK" | cut -f1))"
+          echo "APK : $(du -h "$APK" | cut -f1)"
           cp "$APK" out/studio-tibo.apk
 
       - name: Publier l'APK
